@@ -1,0 +1,82 @@
+name: Publish APT Repository
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'pool/**.deb'
+      - 'public.key'
+      - '.github/workflows/publish.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install aptly
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y aptly gnupg
+
+      - name: Import GPG key
+        run: |
+          echo "${{ secrets.APT_GPG_PRIVATE_KEY }}" | base64 -d | gpg --batch --yes --import
+          # :6: = ultimate ownertrust (gpg has no --quick-set-ownertrust)
+          echo "${{ vars.APT_GPG_KEY_ID }}:6:" | gpg --batch --yes --import-ownertrust
+
+      - name: Create aptly repo
+        run: |
+          aptly repo create -distribution=stable -component=main apt-repo
+
+      - name: Add .deb packages
+        run: |
+          shopt -s nullglob
+          debs=(pool/*.deb)
+          if [ ${#debs[@]} -gt 0 ]; then
+            aptly repo add apt-repo "${debs[@]}"
+          else
+            echo "No .deb packages in pool/ yet — publishing empty index."
+          fi
+
+      - name: Publish repo
+        run: |
+          aptly publish repo \
+            -batch \
+            -architectures="amd64" \
+            -gpg-key="${{ vars.APT_GPG_KEY_ID }}" \
+            -origin="rsvalerio" \
+            -label="rsvalerio" \
+            apt-repo public
+
+      - name: Prepare Pages artifact
+        run: |
+          rm -rf site
+          mkdir -p site && cp -a ~/.aptly/public/public/. site/
+          cp public.key site/public.key
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
