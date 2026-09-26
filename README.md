@@ -18,6 +18,10 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/rsvaler
 sudo apt update
 ```
 
+Indexes are published for `amd64` and `arm64`. `Architecture: all` packages
+(scripts-only, e.g. `my-gha-runner`, `my-gha-runner-host`) are listed for both,
+so they install on the Raspberry Pis too; `amd64` packages only on amd64 hosts.
+
 ## How it works
 
 - `pool/` holds the raw `.deb` files, pushed here by `rsvalerio/ops` on release.
