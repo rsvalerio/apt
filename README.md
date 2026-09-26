@@ -24,12 +24,56 @@ so they install on the Raspberry Pis too; `amd64` packages only on amd64 hosts.
 
 ## How it works
 
-- `pool/` holds the raw `.deb` files, pushed here by `rsvalerio/ops` on release.
+- `pool/` holds the raw `.deb` files, committed here by each project's release
+  workflow:
+  - `rsvalerio/my-cloud`: the `my-*` packages (`build-deb.yaml`)
+  - `rsvalerio/oxydraw`: `oxydraw` (`publish-deb.yml`)
+  - `rsvalerio/ops`: `ops`, once it adopts forge's `publish-deb-dist`
 - `.github/workflows/publish.yml` indexes the pool with `aptly`, signs the
   `Release` file with GPG, and deploys the resulting `public/` tree to
   GitHub Pages.
 - CI uses a **passphrase-less** signing key: `APT_GPG_PRIVATE_KEY` (secret,
   base64 armored private key) and `APT_GPG_KEY_ID` (variable, full fingerprint).
+
+## Retention: old versions leave the pool
+
+Publishers that use forge's `apt-pool-push` (directly or through
+`publish-deb-dist`) prune the pool as they publish. They keep the newest N
+versions of each **package and architecture** (`keep-versions`, compared with
+`dpkg --compare-versions`) and remove the rest in the same commit.
+`publish-deb-dist` defaults to N = 3. Other packages, and other architectures of
+the same package, are not touched.
+
+| Publisher | Retention |
+|-----------|-----------|
+| `ops` (via `publish-deb-dist`, once adopted) | newest 3 per arch |
+| `my-cloud`, `oxydraw` (plain `git push`) | none; every version stays until pruned by hand |
+
+What this means if you install from this repo:
+
+- When a version leaves `pool/`, the next index publish drops it, and
+  `apt install <pkg>=<old-version>` stops working (`E: Version ... was not found`).
+- If you pin an exact version (apt preferences, Ansible, a Dockerfile), keep the
+  pin within the newest N releases or it breaks on the next publish without
+  warning.
+- Hosts that already have the old version installed keep it. They just can't
+  reinstall or downgrade to it from here.
+
+Pruning bounds the pool, not the git history: a removed `.deb` stays in `.git`
+until the history is rewritten. Run `scripts/squash-history.sh` when a clone of
+this repo is much larger than `pool/` (compare `du -sh .git` with
+`du -sh pool`), for example after a run of large `ops` releases:
+
+```bash
+./scripts/squash-history.sh squash --dry-run   # history only; pool stays as is
+./scripts/squash-history.sh squash --yes
+./scripts/squash-history.sh push --yes         # force-push; re-clone elsewhere
+```
+
+`squash-history.sh run` also prunes `pool/` down to the **single newest** version
+per package+arch before squashing. That is stricter than the `keep-versions`
+window above and removes pinned versions users may still depend on, so use
+`squash` alone unless you mean to do that.
 
 ## Rotating the signing key
 
@@ -127,3 +171,10 @@ A passphrase-less signing key in CI is standard for automated APT repos, but
 anyone with `APT_GPG_PRIVATE_KEY` can sign packages as you. Restrict GitHub
 environment access, rotate if leaked, and keep the private key only in 1Password
 and GitHub secrets — never in git.
+
+## Backlog
+
+Work items live in `.backlog/tasks/` and are managed with `ops backlog`
+(`ops backlog task list/view/create/edit`, `ops backlog search`), configured by
+the `[backlog]` section in `.ops.toml`. The external Backlog.md `backlog` CLI
+does not read that config. See [AGENTS.md](AGENTS.md) for the commands.
