@@ -57,7 +57,7 @@ jobs:
         run: |
           aptly publish repo \
             -batch \
-            -architectures="amd64" \
+            -architectures="amd64,arm64" \
             -gpg-key="${{ vars.APT_GPG_KEY_ID }}" \
             -origin="rsvalerio" \
             -label="rsvalerio" \
