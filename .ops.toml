@@ -1,0 +1,6 @@
+[backlog]
+default_status = "Triage"
+statuses = ["Triage", "To Do", "In Progress", "Done"]
+zero_padded_ids = 4
+task_prefix = "TASK"
+backlog_directory = ".backlog"
